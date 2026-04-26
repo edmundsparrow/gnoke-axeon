@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gnoke-Axeon — Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0c0e12;
+      --surface:   #13161c;
+      --panel:     #191d26;
+      --border:    #252a35;
+      --border-lt: #2e3545;
+      --text:      #e2e6f0;
+      --muted:     #5a6378;
+      --subtle:    #3a4155;
+      --accent:    #4ade80;
+      --accent-dk: #22c55e;
+      --amber:     #fbbf24;
+      --amber-lt:  #fef3c7;
+      --red:       #f87171;
+      --blue:      #60a5fa;
+      --mono:      'IBM Plex Mono', monospace;
+      --sans:      'IBM Plex Sans', sans-serif;
+      --radius:    6px;
+      --radius-lg: 10px;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── TOPBAR ── */
+    #topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 48px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 12px;
+      z-index: 100;
+    }
+
+    #topbar .logo {
+      font-family: var(--mono);
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .12em;
+      color: var(--accent);
+    }
+
+    #topbar .sep {
+      width: 1px;
+      height: 16px;
+      background: var(--border-lt);
+    }
+
+    #topbar .tagline {
+      font-family: var(--mono);
+      font-size: .68rem;
+      color: var(--muted);
+      letter-spacing: .06em;
+    }
+
+    #topbar .spacer { flex: 1; }
+
+    #topbar .version {
+      font-family: var(--mono);
+      font-size: .65rem;
+      color: var(--subtle);
+    }
+
+    /* ── LAYOUT ── */
+    .layout {
+      margin-top: 48px;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      height: calc(100vh - 48px);
+    }
+
+    /* ── SIDEBAR ── */
+    #sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+
+    .section-label {
+      font-family: var(--mono);
+      font-size: .6rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    /* ── WORKSPACE CHIP ── */
+    #workspace-chip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border-lt);
+      background: var(--panel);
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      width: 100%;
+      text-align: left;
+    }
+
+    #workspace-chip:hover { border-color: var(--accent); }
+
+    #workspace-chip .chip-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: background .2s;
+    }
+
+    #workspace-chip.connected .chip-dot  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    #workspace-chip.lapsed   .chip-dot  { background: var(--amber); }
+    #workspace-chip.connected { border-color: var(--accent-dk); }
+
+    #workspace-chip .chip-text {
+      font-family: var(--mono);
+      font-size: .72rem;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #workspace-chip.disconnected .chip-text { color: var(--muted); }
+
+    /* ── WRITE FORM ── */
+    .write-section { display: flex; flex-direction: column; gap: 8px; }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .form-field label {
+      font-family: var(--mono);
+      font-size: .62rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .form-field input,
+    .form-field textarea {
+      background: var(--panel);
+      border: 1px solid var(--border-lt);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: .84rem;
+      padding: 8px 10px;
+      outline: none;
+      transition: border-color .15s;
+      resize: none;
+      width: 100%;
+    }
+
+    .form-field input:focus,
+    .form-field textarea:focus { border-color: var(--accent); }
+
+    .form-field textarea { height: 72px; }
+
+    .btn {
+      padding: 8px 14px;
+      border-radius: var(--radius);
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: .06em;
+      cursor: pointer;
+      border: none;
+      transition: opacity .15s, transform .1s;
+    }
+
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #0c1a10;
+      font-weight: 600;
+      width: 100%;
+    }
+
+    .btn-primary:hover:not(:disabled) { background: var(--accent-dk); }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border-lt);
+      width: 100%;
+    }
+
+    .btn-ghost:hover { border-color: var(--border-lt); color: var(--text); background: var(--panel); }
+
+    /* ── STATS ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+    }
+
+    .stat-val {
+      font-family: var(--mono);
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .stat-lbl {
+      font-family: var(--mono);
+      font-size: .6rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* ── MAIN PANEL ── */
+    #main {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── TOOLBAR ── */
+    #toolbar {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+    }
+
+    #toolbar .tool-label {
+      font-family: var(--mono);
+      font-size: .68rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    #toolbar .spacer { flex: 1; }
+
+    .tag {
+      font-family: var(--mono);
+      font-size: .62rem;
+      padding: 3px 8px;
+      border-radius: 20px;
+      border: 1px solid;
+    }
+
+    .tag-green  { color: var(--accent);   border-color: var(--accent-dk);  background: #052010; }
+    .tag-amber  { color: var(--amber);    border-color: #92600a;            background: #1a1200; }
+    .tag-muted  { color: var(--muted);    border-color: var(--border-lt);  background: transparent; }
+    .tag-red    { color: var(--red);      border-color: #7f1d1d;            background: #1a0000; }
+
+    /* ── RECORD TABLE ── */
+    #records-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 10px;
+      color: var(--muted);
+    }
+
+    .empty-icon {
+      font-size: 2rem;
+      opacity: .4;
+    }
+
+    .empty-msg {
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: .06em;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      font-family: var(--mono);
+      font-size: .62rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .1s;
+    }
+
+    tbody tr:hover { background: var(--panel); }
+
+    tbody td {
+      padding: 10px 16px;
+      font-size: .82rem;
+      vertical-align: top;
+    }
+
+    td.mono {
+      font-family: var(--mono);
+      font-size: .72rem;
+      color: var(--muted);
+    }
+
+    td.note {
+      color: var(--muted);
+      font-size: .8rem;
+      max-width: 240px;
+    }
+
+    .pending-row { opacity: .6; }
+
+    .status-dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .dot-pending { background: var(--amber); animation: pulse 1.2s infinite; }
+    .dot-confirmed { background: var(--accent); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .3; }
+    }
+
+    /* ── LOG ── */
+    #log-panel {
+      height: 160px;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+      overflow-y: auto;
+      padding: 10px 16px;
+    }
+
+    .log-line {
+      font-family: var(--mono);
+      font-size: .68rem;
+      line-height: 1.8;
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+    }
+
+    .log-ts   { color: var(--subtle); flex-shrink: 0; }
+    .log-ok   { color: var(--accent); }
+    .log-warn { color: var(--amber); }
+    .log-info { color: var(--blue); }
+    .log-err  { color: var(--red); }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed;
+      bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--panel);
+      border: 1px solid var(--border-lt);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: .72rem;
+      padding: 8px 16px;
+      border-radius: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s, transform .2s;
+      white-space: nowrap;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── SCROLLBAR ── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-lt); border-radius: 10px; }
+
+    /* ── NO FS API WARNING ── */
+    #no-fs-warning {
+      display: none;
+      padding: 8px 12px;
+      background: #1a0a00;
+      border: 1px solid #7f3a00;
+      border-radius: var(--radius);
+      font-family: var(--mono);
+      font-size: .68rem;
+      color: var(--amber);
+      line-height: 1.6;
+    }
+
+    @media (max-width: 700px) {
+      .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      #sidebar { border-right: none; border-bottom: 1px solid var(--border); max-height: 320px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div id="topbar">
+  <span class="logo">GNOKE-AXEON</span>
+  <div class="sep"></div>
+  <span class="tagline">local-first browser runtime · trio demo</span>
+  <div class="spacer"></div>
+  <span class="version">DB v1.3.2 · Sync v1.2.1 · Bridge v1.2.1</span>
+</div>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+
+    <!-- WORKSPACE -->
+    <div>
+      <div class="section-label">Workspace</div>
+      <div id="no-fs-warning">
+        File System Access API not available.<br>
+        Open this page in Chrome (desktop or Android v10+).
+      </div>
+      <button id="workspace-chip" class="disconnected">
+        <span class="chip-dot"></span>
+        <span class="chip-text" id="chip-text">Connect workspace folder</span>
+      </button>
+    </div>
+
+    <!-- STATS -->
+    <div>
+      <div class="section-label">Collection — records</div>
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-val" id="st-total">0</div>
+          <div class="stat-lbl">Total</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="st-pending" style="color:var(--amber)">0</div>
+          <div class="stat-lbl">Pending</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WRITE FORM -->
+    <div class="write-section">
+      <div class="section-label">Write a record</div>
+      <div class="form-field">
+        <label>Name</label>
+        <input type="text" id="f-name" placeholder="e.g. Adaeze Obi" />
+      </div>
+      <div class="form-field">
+        <label>Note</label>
+        <textarea id="f-note" placeholder="Any text…"></textarea>
+      </div>
+      <button class="btn btn-primary" id="btn-save" disabled>↳ Save Record</button>
+      <button class="btn btn-ghost" id="btn-clear-form">Clear</button>
+    </div>
+
+    <!-- ACTIONS -->
+    <div>
+      <div class="section-label">Actions</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <button class="btn btn-ghost" id="btn-reload-records" disabled>↺ Reload from RAM</button>
+        <button class="btn btn-ghost" id="btn-clear-all" disabled style="color:var(--red);border-color:#7f1d1d;">⚠ Clear collection</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+
+    <!-- TOOLBAR -->
+    <div id="toolbar">
+      <span class="tool-label">records</span>
+      <span id="tag-collection" class="tag tag-muted" style="display:none"></span>
+      <div class="spacer"></div>
+      <span id="tag-status" class="tag tag-muted">not connected</span>
+    </div>
+
+    <!-- RECORD TABLE -->
+    <div id="records-wrap">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">◫</div>
+        <div class="empty-msg">connect a workspace to begin</div>
+      </div>
+      <table id="records-table" style="display:none;">
+        <thead>
+          <tr>
+            <th>id</th>
+            <th>name</th>
+            <th>note</th>
+            <th>status</th>
+            <th>written</th>
+          </tr>
+        </thead>
+        <tbody id="records-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- LOG -->
+    <div id="log-panel">
+      <div class="log-line"><span class="log-ts">--:--:--</span><span class="log-info">gnoke-axeon demo ready — waiting for workspace</span></div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ═══ LOAD THE TRIO ════════════════════════════════════════════
+     Adjust paths to match your repo layout.
+     These three lines are ALL the runtime you need.
+════════════════════════════════════════════════════════════════ -->
+<script src="gnoke-db.js"></script>
+<script src="gnoke-sync.js"></script>
+<script src="gnoke-bridge.js"></script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   demo.js — inline for single-file portability
+   Demonstrates: open → save → query → reload → pending state
+═══════════════════════════════════════════════════════════════ */
+'use strict';
+
+const COLLECTION = 'demo_records';
+
+/* ── UI REFS ── */
+const chip        = document.getElementById('workspace-chip');
+const chipText    = document.getElementById('chip-text');
+const btnSave     = document.getElementById('btn-save');
+const btnReload   = document.getElementById('btn-reload-records');
+const btnClearAll = document.getElementById('btn-clear-all');
+const btnClearFrm = document.getElementById('btn-clear-form');
+const fName       = document.getElementById('f-name');
+const fNote       = document.getElementById('f-note');
+const tbody       = document.getElementById('records-tbody');
+const table       = document.getElementById('records-table');
+const emptyState  = document.getElementById('empty-state');
+const stTotal     = document.getElementById('st-total');
+const stPending   = document.getElementById('st-pending');
+const tagStatus   = document.getElementById('tag-status');
+const tagColl     = document.getElementById('tag-collection');
+const logPanel    = document.getElementById('log-panel');
+const noFsWarn    = document.getElementById('no-fs-warning');
+
+/* ── LOG ── */
+function log(msg, type = 'info') {
+  const ts  = new Date().toTimeString().slice(0, 8);
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  div.innerHTML = `<span class="log-ts">${ts}</span><span class="log-${type}">${msg}</span>`;
+  logPanel.appendChild(div);
+  logPanel.scrollTop = logPanel.scrollHeight;
+}
+
+/* ── TOAST ── */
+let _tt;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  clearTimeout(_tt);
+  el.textContent = msg;
+  el.classList.add('show');
+  _tt = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+/* ── STATUS TAG ── */
+function setStatus(label, cls) {
+  tagStatus.textContent = label;
+  tagStatus.className = `tag ${cls}`;
+}
+
+/* ── RENDER RECORDS ── */
+async function renderRecords() {
+  const records = await GnokeDB.query(COLLECTION);
+  const pending = records.filter(r => r.__pending).length;
+
+  stTotal.textContent   = records.length;
+  stPending.textContent = pending;
+
+  if (!records.length) {
+    table.style.display      = 'none';
+    emptyState.style.display = 'flex';
+    emptyState.querySelector('.empty-msg').textContent = 'no records yet — write one';
+    return;
+  }
+
+  emptyState.style.display = 'none';
+  table.style.display      = 'table';
+  tbody.innerHTML = '';
+
+  records.slice().reverse().forEach(rec => {
+    const p   = rec.__pending;
+    const tr  = document.createElement('tr');
+    if (p) tr.className = 'pending-row';
+    tr.innerHTML = `
+      <td class="mono">${rec.id?.slice(0, 14) || '—'}</td>
+      <td>${rec.name || '—'}</td>
+      <td class="note">${rec.note || '—'}</td>
+      <td>
+        <span class="status-dot ${p ? 'dot-pending' : 'dot-confirmed'}"></span>
+        <span class="mono" style="font-size:.68rem;color:${p ? 'var(--amber)' : 'var(--accent)'}">
+          ${p ? 'pending' : 'confirmed'}
+        </span>
+      </td>
+      <td class="mono">${rec.ts ? new Date(rec.ts).toLocaleTimeString() : '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ── BOOT ── */
+async function bootKernel(folderName) {
+  chipText.textContent = `✓ ${folderName}`;
+  chip.className       = 'connected';
+
+  tagColl.textContent      = COLLECTION;
+  tagColl.style.display    = 'inline';
+  setStatus('connected · offline mode', 'tag-green');
+
+  btnSave.disabled     = false;
+  btnReload.disabled   = false;
+  btnClearAll.disabled = false;
+
+  /* Wire Bridge — connects DB ↔ Sync hooks */
+  GnokeBridge.init({ db: GnokeDB, sync: GNOKE_SYNC });
+
+  log(`workspace connected → ${folderName}`, 'ok');
+  log('bridge wired · sync hooks active', 'ok');
+  log(`querying collection: ${COLLECTION}`, 'info');
+
+  await renderRecords();
+
+  const count = await GnokeDB.query(COLLECTION);
+  log(`loaded ${count.length} record(s) from RAM mirror`, 'ok');
+}
+
+/* ── WORKSPACE CHIP ── */
+async function initWorkspace() {
+  if (!window.showDirectoryPicker) {
+    noFsWarn.style.display = 'block';
+    chip.style.display     = 'none';
+    log('File System Access API not available — use Chrome', 'err');
+    return;
+  }
+
+  /* Silent permission check on load */
+  chip.addEventListener('click', async () => {
+    try {
+      log('opening folder picker…', 'info');
+      const info = await GnokeDB.open();
+      await bootKernel(info.folder);
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        log(`open failed: ${e.message}`, 'err');
+        setStatus('error', 'tag-red');
+      } else {
+        log('folder picker cancelled', 'warn');
+      }
+    }
+  });
+}
+
+/* ── SAVE ── */
+btnSave.addEventListener('click', async () => {
+  const name = fName.value.trim();
+  const note = fNote.value.trim();
+  if (!name) { toast('Name is required'); fName.focus(); return; }
+
+  try {
+    btnSave.disabled = true;
+    log(`saving record → name: "${name}"`, 'info');
+
+    const id = await GnokeDB.save(COLLECTION, { name, note });
+
+    log(`record written to RAM · id: ${id} · status: pending`, 'warn');
+    toast('Record saved — pending disk confirm');
+
+    fName.value = '';
+    fNote.value = '';
+
+    await renderRecords();
+
+    /* After a tick, disk confirms and __pending clears */
+    setTimeout(async () => {
+      await renderRecords();
+      log(`disk confirmed · id: ${id} · status: confirmed ✓`, 'ok');
+    }, 600);
+
+  } catch (e) {
+    log(`save failed: ${e.message}`, 'err');
+    toast('Save failed');
+  } finally {
+    btnSave.disabled = false;
+  }
+});
+
+/* ── RELOAD FROM RAM ── */
+btnReload.addEventListener('click', async () => {
+  log('re-querying RAM mirror…', 'info');
+  await renderRecords();
+  const all = await GnokeDB.query(COLLECTION);
+  log(`${all.length} record(s) in RAM`, 'ok');
+  toast('Reloaded from RAM');
+});
+
+/* ── CLEAR FORM ── */
+btnClearFrm.addEventListener('click', () => {
+  fName.value = '';
+  fNote.value = '';
+  fName.focus();
+});
+
+/* ── CLEAR COLLECTION ── */
+btnClearAll.addEventListener('click', async () => {
+  if (!confirm(`Drop all records in "${COLLECTION}"? This cannot be undone.`)) return;
+  try {
+    await GnokeDB.drop(COLLECTION);
+    log(`collection dropped: ${COLLECTION}`, 'warn');
+    toast('Collection cleared');
+    await renderRecords();
+  } catch (e) {
+    log(`drop failed: ${e.message}`, 'err');
+  }
+});
+
+/* ── START ── */
+initWorkspace();
+</script>
+</body>
+</html>
