@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   gnoke-db.js — v1.3.2
+   gnoke-db.js — v1.3.3
    Local-first persistence layer for web apps.
    Filesystem is the source of truth. RAM mirror is the fast path.
    ───────────────────────────────────────────────────────────────
@@ -87,13 +87,22 @@
             Map<id, collection>. remove() now stores the collection alongside
             the id. hasPendingWrites(collection) filters the Map by collection
             before checking. Global check (no argument) is unchanged.
+
+   v1.3.3 changes:
+
+   FIX 6 — Added close() to the public API. Without it, external code had
+            no way to release the internal _idb connection before calling
+            indexedDB.deleteDatabase(). The browser fires a 'blocked' event
+            and the delete hangs while the connection stays open inside the
+            module closure. close() releases _idb, _handle, and resets
+            _ready so open() can safely run again after a DB reset.
 ═══════════════════════════════════════════════════════════════ */
 
 const GnokeDB = (() => {
   'use strict';
 
   // ── Constants ────────────────────────────────────────────────
-  const VERSION           = '1.3.2';
+  const VERSION           = '1.3.3';
   const MANIFEST          = '_gnoke.json';
   const DB_NAME           = 'gnoke-db-shadow';
   const DB_VERSION        = 1;
@@ -701,10 +710,22 @@ const GnokeDB = (() => {
   }
 
   // ── Expose ───────────────────────────────────────────────────
-  return { open, save, update, remove, query, drop, collections, configure, hasPendingWrites };
+  /* ── PUBLIC: close ──────────────────────────────────────────
+     Releases the IDB connection and resets internal state.
+     Call before indexedDB.deleteDatabase() to avoid 'blocked' event.
+     After close(), open() can be called again safely.
+  ── */
+  function close() {
+    if (_idb) { _idb.close(); _idb = null; }
+    _handle = null;
+    _ready  = false;
+  }
+
+  return { open, save, update, remove, query, drop, collections, configure, hasPendingWrites, close };
 
 })();
 
 // Browser global — works as <script src> or ES module
 if (typeof window !== 'undefined') window.GnokeDB = GnokeDB;
 if (typeof module !== 'undefined') module.exports = GnokeDB;
+

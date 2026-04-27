@@ -749,20 +749,16 @@ async function initWorkspace() {
         return;
       }
       if (e.message?.includes('object store')) {
-        log('stale storage detected — clearing and retrying…', 'warn');
+        log('stale storage detected — closing connection…', 'warn');
+        GnokeDB.close();  // release _idb before delete to avoid blocked event
         await new Promise((res, rej) => {
           const del = indexedDB.deleteDatabase('gnoke-db-shadow');
+          del.onblocked = () => log('IDB delete blocked — try refreshing', 'err');
           del.onsuccess = res;
           del.onerror   = rej;
         });
-        try {
-          log('storage cleared — please select your folder again', 'info');
-          const info = await GnokeDB.open();
-          await bootKernel(info.folder);
-        } catch (e2) {
-          log(`open failed after reset: ${e2.message}`, 'err');
-          setStatus('error', 'tag-red');
-        }
+        log('storage cleared — select your folder again', 'info');
+        _opening = false;
         return;
       }
       log(`open failed: ${e.message}`, 'err');
