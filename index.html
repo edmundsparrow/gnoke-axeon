@@ -712,41 +712,65 @@ async function initWorkspace() {
   }
 
   /* ── Silent check on page load — no gesture needed ── */
-  const stored = await _getStoredHandle();
-  if (stored) {
-    try {
+  try {
+    const stored = await _getStoredHandle();
+    if (stored) {
       const perm = await stored.queryPermission({ mode: 'readwrite' });
       if (perm === 'granted') {
-        /* Permission still active — boot without picker */
         log('permission active — reconnecting silently…', 'info');
         const info = await GnokeDB.open();
         await bootKernel(info.folder);
         return;
       } else {
-        /* Handle exists but permission lapsed — show amber chip */
         chip.className       = 'lapsed';
         chipText.textContent = 'Reconnect workspace';
         log('workspace permission lapsed — tap to reconnect', 'warn');
         setStatus('permission lapsed', 'tag-amber');
       }
-    } catch { /* stored handle stale — fall through to normal chip */ }
+    }
+  } catch {
+    /* DB not yet initialised — first visit, fall through to chip click */
   }
 
   /* ── Needs a gesture — wait for chip click ── */
-  chip.addEventListener('click', async () => {
+  let _opening = false;
+
+  async function _doOpen() {
+    if (_opening) return;
+    _opening = true;
     try {
       log('opening folder picker…', 'info');
       const info = await GnokeDB.open();
       await bootKernel(info.folder);
     } catch (e) {
-      if (e.name !== 'AbortError') {
-        log(`open failed: ${e.message}`, 'err');
-        setStatus('error', 'tag-red');
-      } else {
+      _opening = false;
+      if (e.name === 'AbortError') {
         log('folder picker cancelled', 'warn');
+        return;
       }
+      if (e.message?.includes('object store')) {
+        log('stale storage detected — clearing and retrying…', 'warn');
+        await new Promise((res, rej) => {
+          const del = indexedDB.deleteDatabase('gnoke-db-shadow');
+          del.onsuccess = res;
+          del.onerror   = rej;
+        });
+        try {
+          log('storage cleared — please select your folder again', 'info');
+          const info = await GnokeDB.open();
+          await bootKernel(info.folder);
+        } catch (e2) {
+          log(`open failed after reset: ${e2.message}`, 'err');
+          setStatus('error', 'tag-red');
+        }
+        return;
+      }
+      log(`open failed: ${e.message}`, 'err');
+      setStatus('error', 'tag-red');
     }
-  });
+  }
+
+  chip.addEventListener('click', _doOpen);
 }
 
 btnSave.addEventListener('click', async () => {
