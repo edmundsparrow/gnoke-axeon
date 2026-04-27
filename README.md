@@ -1,23 +1,21 @@
-# GNOKE-AXEON — AI HANDOFF DOCUMENT
+# GNOKE-AXEON 
 ## Version: 2.0 (Kernel Edition)
 ## Author: Edmund Sparrow © 2026
-## Purpose: Portable, self-contained architecture guide for any AI or developer picking up this codebase
+## Purpose: Portable, self-contained architecture guide for any developer picking up this codebase
 
 ---
 
 ## ⚠️ FILE INVENTORY — READ THIS FIRST
 
-The canonical Gnoke-Axeon system is exactly **five files**. Use only these versions:
+The canonical Gnoke-Axeon system is exactly **five files**.
 
 | Canonical Filename   | Version | Source                    |
 |----------------------|---------|---------------------------|
-| `gnoke-db.js`        | v1.3.2  | `axeon.zip` → rename from `gnoke-db-v1.3.2.js`     |
-| `gnoke-worker.js`    | v1.0.1  | `axeon.zip` → rename from `gnoke-worker-v1.0.1.js` |
-| `gnoke-client.js`    | v1.0.0  | standalone upload          |
-| `gnoke-bridge.js`    | v1.2.0  | standalone upload          |
-| `gnoke-sync.js`      | v1.2    | standalone upload          |
-
-**Discard:** any `worker.js` or `db.js` without a version suffix — these are unfixed prior iterations.
+| `gnoke-db.js`        | v1.3.2  | standalone        |
+| `gnoke-worker.js`    | v1.0.1  | standalone        |
+| `gnoke-client.js`    | v1.0.0  | standalone        |
+| `gnoke-bridge.js`    | v1.2.0  | standalon         |
+| `gnoke-sync.js`      | v1.2    | standalone        |
 
 **Global names exposed on `self` / `window`:**
 
@@ -336,7 +334,7 @@ These are the two wires that connect the layers. No other cross-layer calls exis
 
 ---
 
-## 🤖 INSTRUCTIONS FOR THE RECEIVING AI
+## <> INSTRUCTIONS FOR THE RECEIVING Developer
 
 When extending or debugging this system, respect these rules:
 
