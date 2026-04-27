@@ -1,298 +1,304 @@
 /* ═══════════════════════════════════════════════════════════════
-   gnoke-bridge.js — v1.2.1
-   Traffic controller for GnokeDB + GnokeSync-lite
+   gnoke-sync-lite  v1.2
+   Offline-first, branch-scoped event courier.
+   ─────────────────────────────────────────────────────────────
+   PRINCIPLE  :  No shared state. Only shared events.
+   DEVICE     :  Execution unit  (offline-first)
+   SERVER     :  Event collector + branch filter
+   SYNC       :  Delayed courier delivery
 
-   PURPOSE:
-   - Normalize events between DB and Sync
-   - Prevent duplicate propagation loops
-   - Enforce sync policies (priority, dedupe, batching logic)
-   - Provide deterministic flow control
+   MENTAL MODEL
+     Device = Truck  │  Event = Parcel
+     Server = Depot  │  Sync  = Delivery
 
-   PRINCIPLE:
-   "No system talks directly. All movement passes through the Bridge."
+   PUBLIC API
+     GnokeSync.init(cfg)            → configure (call after identity resolves)
+     GnokeSync.logEvent(type,e,p)   → queue event locally — no network
+     GnokeSync.push()               → chunk + dispatch queued events
+     GnokeSync.pull()               → branch-scoped fetch + master overwrite
+     GnokeSync.authorize(token)     → activate QR sync token
+     GnokeSync.start(ms?)           → begin push loop (default 30 s)
+     GnokeSync.isReady()            → true if endpoint + QR auth both set
+     GnokeSync.getQueueSnapshot()   → read-only copy of current queue (v1.2)
+     GnokeSync.T                    → event-type constants
+   RULES
+     • branchId MUST be resolved before init() is called
+     • push() is a no-op if not authorised or no endpoint
+     • pull() hard-overwrites master lists (riders, branches)
+     • Max 10 events per request — protects low-end devices on 2G
+     • App runs fine with no backend — every public fn is safe to call
 
-   DEPENDENCIES (OPTIONAL HOOKS ONLY):
-   - GnokeDB.onWrite
-   - GnokeSync.onLogEvent
+   v1.2 changes (bridge-readiness, non-breaking):
+     • init() now accepts an optional onLogEvent hook
+     • logEvent() emits onLogEvent after the queue write
+     • getQueueSnapshot() exposes a read-only copy of the queue
+     • All new surface is optional; existing behaviour unchanged
 
-   ZERO HARD DEPENDENCY ON INTERNAL IMPLEMENTATION
-
-   v1.1.0 fixes (no architecture changes):
-   FIX 1 — _hash(): add ts fallback so undefined event.id never
-            causes hash collisions across unrelated events.
-   FIX 2 — normalizeDBEvent(): GnokeDB record.type is always
-            insert/update/delete. Domain event types (CONFIRM_PAYMENT,
-            REASSIGN_RIDER) live in the payload (record.p.type).
-            Now resolves payload domain type first, storage type as
-            fallback — so HIGH_PRIORITY routing actually fires.
-   FIX 3 — _applyToDB(): UPDATE events must call db.update(), not
-            db.save(). db.save() always inserts a new record.
-            UPDATE now routes to db.update(entity, recordId, payload).
-            Falls back to db.save() only if no record ID is present.
-   FIX 4 — version string updated to v1.1.0 in init() return value.
-
-   v1.2.0 fixes:
-   FIX 5 — pendingOutbox persisted to localStorage. The in-memory Map
-            was wiped on every page reload, meaning a DB write that
-            hadn't synced yet would lose its echo-loop guard and could
-            be re-applied to the DB when Sync replayed it after reload.
-            Now uses the same load/save pattern as GnokeSync's queue.
-   FIX 6 — DELETE guard: if recordId is missing the operation is now
-            blocked, logged via console.warn, and dropped cleanly
-            rather than silently passing undefined to db.remove().
+   Designed to be reused across Gnoke webapps.
+   Zero dependencies. No build step required.
 ═══════════════════════════════════════════════════════════════ */
 
 (function (root) {
   'use strict';
 
-  /* ────────────────────────────────────────────────────────────
-     INTERNAL STATE
-  ──────────────────────────────────────────────────────────── */
+  /* ── CONSTANTS ────────────────────────────────────────────── */
 
-  const seen = new Set();            // prevents echo loops (session-scoped, intentional)
+  const QUEUE_KEY = 'gnoke_sync_queue';
+  const AUTH_KEY  = 'gnoke_sync_auth';
+  const MAX_CHUNK = 10; // 2G-safe batch ceiling per spec
 
-  // FIX 5 — pendingOutbox persisted to localStorage so the echo-loop
-  // guard survives page reloads. Same load/save pattern as GnokeSync.
-  const OUTBOX_KEY = 'gnoke_bridge_outbox';
-
-  function _loadOutbox() {
-    try { return new Map(JSON.parse(localStorage.getItem(OUTBOX_KEY)) || []); }
-    catch { return new Map(); }
-  }
-
-  function _saveOutbox(map) {
-    try { localStorage.setItem(OUTBOX_KEY, JSON.stringify([...map])); }
-    catch { /* localStorage full — outbox stays in memory this session */ }
-  }
-
-  let _cfg = {
-    sync: null,
-    db: null,
-    enableAutoSync: true,
-    dedupeWindowMs: 10_000,
-  };
-
-  /* ────────────────────────────────────────────────────────────
-     UTILITY: SAFE HASH FOR DEDUPE
-  ──────────────────────────────────────────────────────────── */
-
-  // FIX 1 — event.id is undefined for some events (e.g. CREATE before
-  // DB assigns an id, or Sync parcels with no record id). Falling back
-  // to ts prevents multiple distinct events collapsing to the same hash.
-  function _hash(event) {
-    const stableId  = event.id || event.ts;
-    const stableRef = event.payload?.id || event.entity || '';
-    return `${stableId}:${event.type}:${stableRef}`;
-  }
-
-  function _isDuplicate(hash) {
-    if (seen.has(hash)) return true;
-    seen.add(hash);
-    setTimeout(() => seen.delete(hash), _cfg.dedupeWindowMs);
-    return false;
-  }
-
-  /* ────────────────────────────────────────────────────────────
-     NORMALIZATION LAYER
-  ──────────────────────────────────────────────────────────── */
-
-  // FIX 2 — GnokeDB v1.1 onWrite emits:
-  //   { collection, record: { id, type, ts, v, p }, timestamp }
-  // record.type is always the storage operation: insert | update | delete.
-  // Domain event types (CONFIRM_PAYMENT, REASSIGN_RIDER, etc.) are set
-  // by the app inside the payload and stored under record.p.type.
-  // Priority routing in _shouldSync() needs the domain type, not the
-  // storage operation. Resolve payload domain type first; fall back to
-  // storage type so INSERT/UPDATE/DELETE still flow through correctly.
-  function normalizeDBEvent(evt) {
-    const storageType = String(evt.record?.type || '').toUpperCase();
-    const domainType  = String(evt.record?.p?.type || '').toUpperCase();
-
-    return {
-      source:  'db',
-      type:    domainType || storageType,   // domain first, storage as fallback
-      opType:  storageType,                 // always the raw DB operation
-      entity:  evt.collection,
-      id:      evt.record?.id,
-      payload: evt.record?.p || {},
-      ts:      evt.timestamp || Date.now()
-    };
-  }
-
-  function normalizeSyncEvent(type, entity, payload, parcel) {
-    return {
-      source:  'sync',
-      type:    String(type).toUpperCase(),
-      entity,
-      id:      parcel?.id,
-      payload,
-      ts:      Date.now()
-    };
-  }
-
-  /* ────────────────────────────────────────────────────────────
-     DB → SYNC FLOW
-  ──────────────────────────────────────────────────────────── */
-
-  function onDBWrite(evt) {
-    const event = normalizeDBEvent(evt);
-    const hash  = _hash(event);
-
-    if (_isDuplicate(hash)) return;
-
-    // store pending outbound event
-    const pendingOutbox = _loadOutbox();
-    pendingOutbox.set(event.id, event);
-    _saveOutbox(pendingOutbox);
-
-    // decide if it should sync immediately
-    if (_shouldSync(event)) {
-      _dispatchToSync(event);
-    }
-  }
-
-  function _shouldSync(event) {
-    if (!_cfg.enableAutoSync) return false;
-
-    const HIGH_PRIORITY = [
-      'CONFIRM_PAYMENT',
-      'DELETE',
-      'REASSIGN_RIDER'
-    ];
-
-    // After FIX 2, event.type is the domain type (e.g. CONFIRM_PAYMENT)
-    // so this comparison now works as intended.
-    return HIGH_PRIORITY.includes(event.type);
-  }
-
-  function _dispatchToSync(event) {
-    if (!_cfg.sync) return;
-
-    _cfg.sync.logEvent(
-      event.type,
-      event.entity,
-      {
-        ...event.payload,
-        __bridge_id: event.id
-      }
-    );
-  }
-
-  /* ────────────────────────────────────────────────────────────
-     SYNC → DB FLOW
-  ──────────────────────────────────────────────────────────── */
-
-  function onSyncEvent(type, entity, payload, parcel) {
-    const event = normalizeSyncEvent(type, entity, payload, parcel);
-    const hash  = _hash(event);
-
-    if (_isDuplicate(hash)) return;
-
-    // prevent echo loop: if this originated from DB, ignore
-    if (payload?.__bridge_id) {
-      const pendingOutbox = _loadOutbox();
-      if (pendingOutbox.has(payload.__bridge_id)) {
-        pendingOutbox.delete(payload.__bridge_id);
-        _saveOutbox(pendingOutbox);
-        return;
-      }
-    }
-
-    // Apply safe write back into DB
-    _applyToDB(event);
-  }
-
-  function _applyToDB(event) {
-    if (!_cfg.db) return;
-
-    // FIX 3 — db.save() always appends a new insert record.
-    // UPDATE events must use db.update(collection, id, payload)
-    // so the log correctly records an update against the existing id.
-    // Record ID precedence: payload carries it from the server;
-    // parcel id (event.id) is a fallback for bridge-originated events.
-    const recordId = event.payload?.id || event.id;
-
-    switch (event.type) {
-      case 'CREATE':
-        _cfg.db.save(event.entity, event.payload);
-        break;
-
-      case 'UPDATE':
-        if (recordId) {
-          _cfg.db.update(event.entity, recordId, event.payload);
-        } else {
-          // No id available — safe-insert rather than silently drop
-          _cfg.db.save(event.entity, event.payload);
-        }
-        break;
-
-      case 'DELETE':
-        if (!recordId) {
-          console.warn('[gnoke-bridge] DELETE blocked — no recordId resolved.', event);
-          break;
-        }
-        _cfg.db.remove(event.entity, recordId);
-        break;
-
-      default:
-        // ignore unknown types safely
-        break;
-    }
-  }
-
-  /* ────────────────────────────────────────────────────────────
-     PUBLIC API
-  ──────────────────────────────────────────────────────────── */
-
-  function init(config) {
-    _cfg.db            = config.db            || null;
-    _cfg.sync          = config.sync          || null;
-    _cfg.enableAutoSync = config.enableAutoSync ?? true;
-    _cfg.dedupeWindowMs = config.dedupeWindowMs ?? 10000;
-
-    // Attach hooks (non-invasive)
-    if (_cfg.db?.configure) {
-      _cfg.db.configure({
-        onWrite: onDBWrite
-      });
-    }
-
-    if (_cfg.sync?.init) {
-      _cfg.sync.init({
-        onLogEvent: onSyncEvent
-      });
-    }
-
-    // FIX 4 — version string
-    return {
-      ready:  true,
-      bridge: 'gnoke-bridge-v1.2.1'
-    };
-  }
-
-  function forceSync() {
-    if (!_cfg.sync) return;
-    return _cfg.sync.push();
-  }
-
-  function forcePull() {
-    if (!_cfg.sync) return;
-    return _cfg.sync.pull();
-  }
-
-  function getPending() {
-    return Array.from(_loadOutbox().values());
-  }
-
-  /* ────────────────────────────────────────────────────────────
-     EXPORT
-  ──────────────────────────────────────────────────────────── */
-
-  root.GnokeBridge = Object.freeze({
-    init,
-    forceSync,
-    forcePull,
-    getPending
+  /** Event types — use explicit domain events; never raw strings in caller code. */
+  const T = Object.freeze({
+    CREATE          : 'CREATE',
+    UPDATE          : 'UPDATE',
+    DELETE          : 'DELETE',
+    CLOSE_LEAD      : 'CLOSE_LEAD',
+    CONFIRM_PAYMENT : 'CONFIRM_PAYMENT',
+    REASSIGN_RIDER  : 'REASSIGN_RIDER',
   });
 
-})(typeof self !== 'undefined' ? self : window);
+  /* ── CONFIG ───────────────────────────────────────────────── */
+
+  let _cfg = {
+    endpoint       : '',       // set via init() — library works without it
+    phone          : null,     // operator phone   (human anchor)
+    dk             : null,     // device key        (install identity)
+    branchId       : null,     // CRITICAL — must be set before any sync op
+    onStatusChange : null,     // fn(recordId, status) → caller updates UI/storage
+    onMasterUpdate : null,     // fn(entity, items)    → caller hard-overwrites local list
+  };
+
+  // v1.2 — observability hook (optional, set via init())
+  let _onLogEvent = null;      // fn(type, entity, payload, parcel)
+
+  /* ── QUEUE ────────────────────────────────────────────────── */
+
+  const _loadQ = () => {
+    try { return JSON.parse(localStorage.getItem(QUEUE_KEY)) || []; }
+    catch { return []; }
+  };
+  const _saveQ = q => localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+
+  /* ── AUTH ─────────────────────────────────────────────────── */
+
+  const _getAuth      = () => { try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch { return null; } };
+  const _isAuthorized = () => { const a = _getAuth(); return a?.syncAuthorized === true && !!a?.syncToken; };
+
+  /* ── PARCEL FACTORY ───────────────────────────────────────── */
+  /*
+    Every queued event is a self-describing parcel.
+    The server needs no shared schema — the parcel carries its own context.
+  */
+  function _makeParcel(type, entity, payload) {
+    return {
+      id       : Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      type,                     // one of T.*
+      entity,                   // 'booking' | 'rider' | 'branch' …
+      phone    : _cfg.phone,
+      dk       : _cfg.dk,
+      branchId : _cfg.branchId,
+      payload,
+      ts       : new Date().toISOString(),
+      status   : 'pending',
+    };
+  }
+
+  /* ── PUBLIC: logEvent ─────────────────────────────────────── */
+  /*
+    Store locally ONLY. No network. Safe to call while offline.
+    This is the ONLY write path into the event queue.
+
+    v1.2: emits onLogEvent after queue write (best-effort, non-blocking).
+    The hook receives (type, entity, payload, parcel) so an external
+    mediator (e.g. GnokeBridge) can observe without touching the queue.
+  */
+  function logEvent(type, entity, payload) {
+    const parcel = _makeParcel(type, entity, payload);
+    const q = _loadQ();
+    q.push(parcel);
+    _saveQ(q);
+
+    // v1.2 — notify bridge / external observer after queue write
+    _onLogEvent?.(type, entity, payload, parcel);
+
+    return parcel;
+  }
+
+  /* ── PUBLIC: push ─────────────────────────────────────────── */
+  /*
+    Flush pending queue in chunks of MAX_CHUNK.
+    Requires: endpoint configured + QR authorisation active.
+    On network failure: leaves parcels as 'pending' for next loop.
+    On server rejection: marks chunk as 'failed', notifies caller.
+  */
+  async function push() {
+    if (!_cfg.endpoint)   return { ok: false, reason: 'no_endpoint' };
+    if (!_isAuthorized()) return { ok: false, reason: 'not_authorized' };
+
+    const pending = _loadQ().filter(p => p.status === 'pending' || p.status === 'failed');
+    if (!pending.length)  return { ok: true, pushed: 0 };
+
+    const { syncToken } = _getAuth();
+    let pushed = 0;
+
+    for (let i = 0; i < pending.length; i += MAX_CHUNK) {
+      const chunk = pending.slice(i, i + MAX_CHUNK);
+      const ids   = new Set(chunk.map(p => p.id));
+
+      try {
+        const res = await fetch(`${_cfg.endpoint}/dispatch`, {
+          method  : 'POST',
+          headers : {
+            'Content-Type' : 'application/json',
+            'X-Sync-Token' : syncToken,
+          },
+          body: JSON.stringify({ branchId: _cfg.branchId, events: chunk }),
+        });
+
+        /* Re-read queue — state may have shifted while awaiting */
+        const live       = _loadQ();
+        const nextStatus = res.ok ? 'synced' : 'failed';
+        live.forEach(p => { if (ids.has(p.id)) p.status = nextStatus; });
+        _saveQ(live);
+
+        if (res.ok) {
+          pushed += chunk.length;
+          chunk.forEach(p => _cfg.onStatusChange?.(p.payload?.id, 'synced'));
+        } else {
+          chunk.forEach(p => _cfg.onStatusChange?.(p.payload?.id, 'failed'));
+        }
+      } catch {
+        /* Network down — parcels stay 'pending', retry on next loop */
+      }
+    }
+
+    return { ok: true, pushed };
+  }
+
+  /* ── PUBLIC: pull ─────────────────────────────────────────── */
+  /*
+    Branch-scoped fetch from server.
+
+    MASTER LIST RULE (critical):
+    Riders, Branches → HARD OVERWRITE via onMasterUpdate callback.
+    localList = serverList — no appending, no merging.
+    This is the only permanent fix for "ghost duplicate" records.
+    If Admin renames or deletes a rider on the server, this propagates instantly.
+  */
+  async function pull() {
+    if (!_cfg.endpoint)   return { ok: false, reason: 'no_endpoint' };
+    if (!_isAuthorized()) return { ok: false, reason: 'not_authorized' };
+
+    const { syncToken } = _getAuth();
+
+    try {
+      const res = await fetch(
+        `${_cfg.endpoint}/updates?branchId=${encodeURIComponent(_cfg.branchId)}`,
+        { headers: { 'X-Sync-Token': syncToken } }
+      );
+      if (!res.ok) return { ok: false, reason: 'server_error' };
+
+      const data = await res.json();
+
+      /* Hard-overwrite each master list present in the response */
+      ['riders', 'branches'].forEach(entity => {
+        if (Array.isArray(data[entity])) {
+          _cfg.onMasterUpdate?.(entity, data[entity]);
+        }
+      });
+
+      return { ok: true, data };
+    } catch {
+      return { ok: false, reason: 'network_error' };
+    }
+  }
+
+  /* ── PUBLIC: authorize ────────────────────────────────────── */
+  /*
+    Called after admin QR is scanned and token is validated.
+    Token must be present in every subsequent push/pull request.
+    This is the ONLY activation path — sync is disabled by default.
+  */
+  function authorize(token) {
+    if (!token || String(token).length < 8) return false;
+    localStorage.setItem(AUTH_KEY, JSON.stringify({
+      syncAuthorized : true,
+      syncToken      : String(token),
+      authorizedAt   : new Date().toISOString(),
+    }));
+    return true;
+  }
+
+  /* ── PUBLIC: init ─────────────────────────────────────────── */
+  /*
+    Configure and arm the library.
+    Call AFTER identity is resolved (profile + device key available).
+    branchId is required — all sync is scoped to it.
+
+    v1.2: accepts optional onLogEvent hook.
+    The hook is called by logEvent() after every queue write.
+    It MUST NOT mutate the parcel or the queue — observe only.
+  */
+  function init(config) {
+    if (!config?.phone || !config?.dk || !config?.branchId) {
+      console.warn('[gnoke-sync] init() requires phone, dk, and branchId.');
+    }
+
+    // v1.2 — capture observability hook before spreading config
+    if (typeof config?.onLogEvent === 'function') {
+      _onLogEvent = config.onLogEvent;
+    }
+
+    Object.assign(_cfg, config);
+
+    return {
+      authorized : _isAuthorized(),
+      branchId   : _cfg.branchId,
+      pending    : _loadQ().filter(p => p.status === 'pending').length,
+    };
+  }
+
+  /* ── PUBLIC: start ────────────────────────────────────────── */
+  /* Begin the push loop. Fires immediately, then every intervalMs. */
+  function start(intervalMs = 30_000) {
+    push();
+    setInterval(push, intervalMs);
+  }
+
+  /* ── PUBLIC: getQueueSnapshot (v1.2) ─────────────────────── */
+  /*
+    Returns a shallow copy of the current queue for external inspection.
+    Read-only by convention — callers MUST NOT mutate the returned array.
+    Use this instead of reaching into localStorage directly.
+  */
+  function getQueueSnapshot() {
+    return _loadQ();
+  }
+
+  /* ── PUBLIC: isReady / isAuthorized ──────────────────────── */
+  const isReady      = () => !!_cfg.endpoint && _isAuthorized();
+  const isAuthorized = () => _isAuthorized();
+
+  /* ── EXPORT ───────────────────────────────────────────────── */
+
+  root.GNOKE_SYNC = Object.freeze({
+    T,
+    init,
+    logEvent,
+    push,
+    pull,
+    authorize,
+    start,
+    isReady,
+    isAuthorized,
+    getQueueSnapshot,   // v1.2
+  });
+
+  /*
+    Backward-compat hook — commit() in script.js calls this.
+    Routes directly to logEvent so no caller code needs to change
+    before the app is fully wired to GNOKE_SYNC.logEvent directly.
+  */
+  root.__syncHook = record => logEvent(T.CREATE, 'booking', record);
+
+})(window);
