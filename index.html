@@ -648,8 +648,8 @@ async function renderRecords() {
     if (p) tr.className = 'pending-row';
     tr.innerHTML = `
       <td class="mono">${rec.id?.slice(0, 14) || '—'}</td>
-      <td>${rec.name || '—'}</td>
-      <td class="note">${rec.note || '—'}</td>
+      <td>${rec.p?.name || '—'}</td>
+      <td class="note">${rec.p?.note || '—'}</td>
       <td>
         <span class="status-dot ${p ? 'dot-pending' : 'dot-confirmed'}"></span>
         <span class="mono" style="font-size:.66rem;color:${p ? 'var(--amber)' : 'var(--accent)'}">
@@ -674,7 +674,9 @@ async function bootKernel(folderName) {
   btnReload.disabled   = false;
   btnClearAll.disabled = false;
 
-  GnokeBridge.init({ db: GnokeDB, sync: GNOKE_SYNC });
+  const syncLayer = (typeof GNOKE_SYNC !== 'undefined') ? GNOKE_SYNC : null;
+  if (!syncLayer) log('gnoke-sync.js not found — bridge wired in DB-only mode', 'warn');
+  GnokeBridge.init({ db: GnokeDB, sync: syncLayer });
 
   log(`workspace connected → ${folderName}`, 'ok');
   log('bridge wired · sync hooks active', 'ok');
@@ -685,6 +687,22 @@ async function bootKernel(folderName) {
   log(`loaded ${all.length} record(s) from RAM mirror`, 'ok');
 }
 
+/* Read stored handle from GnokeDB's own IndexedDB shelf */
+function _getStoredHandle() {
+  return new Promise((resolve) => {
+    const req = indexedDB.open('gnoke-db-shadow', 1);
+    req.onerror = () => resolve(null);
+    req.onsuccess = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('handles')) { db.close(); return resolve(null); }
+      const tx  = db.transaction('handles', 'readonly');
+      const get = tx.objectStore('handles').get('workspace');
+      get.onsuccess = () => { db.close(); resolve(get.result || null); };
+      get.onerror   = () => { db.close(); resolve(null); };
+    };
+  });
+}
+
 async function initWorkspace() {
   if (!window.showDirectoryPicker) {
     noFsWarn.style.display = 'block';
@@ -693,6 +711,28 @@ async function initWorkspace() {
     return;
   }
 
+  /* ── Silent check on page load — no gesture needed ── */
+  const stored = await _getStoredHandle();
+  if (stored) {
+    try {
+      const perm = await stored.queryPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        /* Permission still active — boot without picker */
+        log('permission active — reconnecting silently…', 'info');
+        const info = await GnokeDB.open();
+        await bootKernel(info.folder);
+        return;
+      } else {
+        /* Handle exists but permission lapsed — show amber chip */
+        chip.className       = 'lapsed';
+        chipText.textContent = 'Reconnect workspace';
+        log('workspace permission lapsed — tap to reconnect', 'warn');
+        setStatus('permission lapsed', 'tag-amber');
+      }
+    } catch { /* stored handle stale — fall through to normal chip */ }
+  }
+
+  /* ── Needs a gesture — wait for chip click ── */
   chip.addEventListener('click', async () => {
     try {
       log('opening folder picker…', 'info');
