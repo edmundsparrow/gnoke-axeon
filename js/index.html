@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gnoke·Mark</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#f7f5f0;--surface:#ffffff;--panel:#faf9f6;
+      --border:#e6e1d8;--border-dk:#ccc7bc;
+      --text:#1a1814;--muted:#7a7469;--subtle:#b0aa9e;
+      --accent:#2d5a27;--accent-lt:#edf5eb;--accent-md:#3d7a35;
+      --amber:#8a5c00;--amber-lt:#fef8e7;
+      --red:#8b1a1a;--red-lt:#fdf2f2;
+      --mono:'DM Mono',monospace;--sans:'DM Sans',sans-serif;--prose:'Lora',serif;
+      --radius:4px;--shadow:0 1px 4px rgba(0,0,0,.07);--shadow-md:0 4px 16px rgba(0,0,0,.12);
+    }
+    html,body{height:100%;overflow:hidden;}
+    body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14px;}
+
+    /* TOPBAR */
+    #topbar{height:44px;background:var(--surface);border-bottom:1px solid var(--border);
+      display:flex;align-items:center;padding:0 14px;gap:10px;box-shadow:var(--shadow);
+      position:relative;z-index:200;}
+    .t-logo{font-family:var(--mono);font-size:.78rem;font-weight:500;color:var(--text);letter-spacing:.04em;flex-shrink:0;}
+    .t-logo em{color:var(--accent);font-style:normal;}
+    .t-sep{width:1px;height:16px;background:var(--border-dk);flex-shrink:0;}
+    .t-file{font-family:var(--mono);font-size:.65rem;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .t-mod{color:var(--amber);font-size:.75rem;margin-left:-2px;}
+    .t-spacer{flex:1;}
+    .t-stats{font-family:var(--mono);font-size:.6rem;color:var(--subtle);display:flex;gap:10px;}
+    .t-stat span{color:var(--muted);}
+
+    /* WORKSPACE STATUS */
+    #ws-chip{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);
+      border:1px solid var(--border-dk);background:var(--panel);cursor:pointer;
+      font-family:var(--mono);font-size:.62rem;color:var(--muted);transition:all .15s;flex-shrink:0;}
+    #ws-chip:hover{border-color:var(--accent);background:var(--accent-lt);color:var(--accent);}
+    #ws-chip.connected{border-color:#a8cfa4;background:var(--accent-lt);color:var(--accent);cursor:default;}
+    .ws-dot{width:6px;height:6px;border-radius:50%;background:var(--subtle);flex-shrink:0;transition:background .2s;}
+    #ws-chip.connected .ws-dot{background:var(--accent-md);box-shadow:0 0 0 2px #c6efd5;}
+
+    /* MENUBAR */
+    #menubar{height:34px;background:var(--panel);border-bottom:1px solid var(--border);
+      display:flex;align-items:stretch;padding:0 8px;gap:0;position:relative;z-index:100;}
+
+    /* MENU ITEM */
+    .menu-item{position:relative;}
+    .menu-trigger{height:100%;padding:0 12px;font-family:var(--mono);font-size:.68rem;
+      color:var(--muted);background:transparent;border:none;cursor:pointer;
+      display:flex;align-items:center;gap:5px;transition:all .1s;border-radius:var(--radius);}
+    .menu-trigger:hover,.menu-trigger.open{background:var(--surface);color:var(--text);}
+
+    /* DROPDOWN */
+    .menu-drop{position:absolute;top:calc(100% + 2px);left:0;min-width:200px;
+      background:var(--surface);border:1px solid var(--border-dk);border-radius:6px;
+      box-shadow:var(--shadow-md);padding:4px;display:none;z-index:300;}
+    .menu-drop.open{display:block;}
+    .menu-drop-item{display:flex;align-items:center;justify-content:space-between;
+      padding:7px 10px;border-radius:var(--radius);cursor:pointer;gap:20px;
+      font-size:.82rem;color:var(--text);transition:background .1s;}
+    .menu-drop-item:hover{background:var(--panel);}
+    .menu-drop-item .shortcut{font-family:var(--mono);font-size:.58rem;color:var(--subtle);}
+    .menu-drop-item.disabled{opacity:.4;cursor:not-allowed;}
+    .menu-drop-item.disabled:hover{background:transparent;}
+    .menu-sep{height:1px;background:var(--border);margin:3px 6px;}
+
+    /* TOOLBAR */
+    #toolbar{height:36px;background:var(--surface);border-bottom:1px solid var(--border);
+      display:flex;align-items:center;padding:0 10px;gap:3px;overflow-x:auto;}
+    #toolbar::-webkit-scrollbar{display:none;}
+    .tb-group{display:flex;gap:2px;padding-right:7px;border-right:1px solid var(--border);margin-right:3px;flex-shrink:0;}
+    .tb-group:last-child{border-right:none;padding-right:0;margin-right:0;}
+    .tbtn{font-family:var(--mono);font-size:.63rem;padding:4px 8px;border-radius:var(--radius);
+      border:1px solid transparent;background:transparent;cursor:pointer;color:var(--muted);
+      transition:all .12s;white-space:nowrap;line-height:1;}
+    .tbtn:hover{background:var(--panel);border-color:var(--border);color:var(--text);}
+    .tbtn:active{transform:scale(.95);}
+    .tbtn.active{background:var(--accent-lt);border-color:#a8cfa4;color:var(--accent);}
+
+    /* WORKSPACE */
+    #workspace{display:flex;height:calc(100vh - 44px - 34px - 36px - 24px);overflow:hidden;}
+    .pane-label{font-family:var(--mono);font-size:.54rem;letter-spacing:.12em;text-transform:uppercase;
+      color:var(--subtle);padding:5px 14px 4px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;}
+
+    /* EDITOR */
+    #editor-pane{flex:1;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border);min-width:0;}
+    #editor{flex:1;padding:28px 32px;font-family:var(--mono);font-size:.81rem;line-height:1.8;
+      color:var(--text);background:var(--surface);border:none;outline:none;resize:none;
+      overflow-y:auto;tab-size:2;caret-color:var(--accent);}
+    #editor::placeholder{color:var(--subtle);}
+
+    /* PREVIEW */
+    #preview-pane{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+    #preview{flex:1;padding:28px 36px;overflow-y:auto;background:var(--bg);}
+    #preview h1{font-family:var(--prose);font-size:1.7rem;font-weight:600;color:var(--text);margin:0 0 .5em;line-height:1.2;letter-spacing:-.02em;}
+    #preview h2{font-family:var(--prose);font-size:1.2rem;font-weight:600;color:var(--text);margin:1.4em 0 .4em;border-bottom:1px solid var(--border);padding-bottom:.3em;}
+    #preview h3{font-family:var(--sans);font-size:.9rem;font-weight:600;color:var(--text);margin:1.2em 0 .3em;text-transform:uppercase;letter-spacing:.07em;}
+    #preview p{font-family:var(--prose);font-size:.9rem;line-height:1.8;color:var(--text);margin:0 0 1em;}
+    #preview strong{font-weight:700;}
+    #preview em{font-style:italic;}
+    #preview code{font-family:var(--mono);font-size:.74rem;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:1px 5px;color:var(--accent);}
+    #preview pre{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;overflow-x:auto;margin:0 0 1em;}
+    #preview pre code{background:none;border:none;padding:0;color:var(--text);font-size:.75rem;line-height:1.6;}
+    #preview blockquote{border-left:3px solid var(--accent-md);margin:0 0 1em;padding:.4em 1em;background:var(--accent-lt);border-radius:0 var(--radius) var(--radius) 0;}
+    #preview blockquote p{color:var(--accent);margin:0;font-style:italic;}
+    #preview ul,#preview ol{padding-left:1.5em;margin:0 0 1em;}
+    #preview li{font-family:var(--prose);font-size:.9rem;line-height:1.7;margin-bottom:.2em;}
+    #preview hr{border:none;border-top:1px solid var(--border);margin:1.5em 0;}
+    #preview a{color:var(--accent-md);text-decoration:underline;text-underline-offset:2px;}
+    #preview table{width:100%;border-collapse:collapse;margin:0 0 1em;font-size:.82rem;}
+    #preview th{font-family:var(--mono);font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;background:var(--panel);border:1px solid var(--border);padding:7px 10px;text-align:left;color:var(--muted);}
+    #preview td{border:1px solid var(--border);padding:7px 10px;}
+
+    /* FOCUS MODE */
+    body.focus-mode #toolbar,body.focus-mode #menubar{display:none;}
+    body.focus-mode #workspace{height:calc(100vh - 44px - 24px);}
+    body.focus-mode #editor{padding:52px 100px;font-size:.88rem;}
+    body.focus-mode #preview-pane{display:none;}
+    body.focus-mode #editor-pane{border-right:none;}
+
+    /* STATUSBAR */
+    #statusbar{height:24px;background:var(--surface);border-top:1px solid var(--border);
+      display:flex;align-items:center;padding:0 14px;gap:12px;
+      font-family:var(--mono);font-size:.57rem;color:var(--subtle);}
+    .s-sep{width:1px;height:10px;background:var(--border);}
+    #s-msg{flex:1;text-align:right;color:var(--accent);}
+
+    /* NOT CONNECTED OVERLAY */
+    #no-ws{position:absolute;inset:0;background:rgba(247,245,240,.92);
+      display:flex;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(2px);}
+    #no-ws .nw-card{background:var(--surface);border:1px solid var(--border-dk);border-radius:8px;
+      padding:28px 32px;max-width:340px;width:100%;text-align:center;box-shadow:var(--shadow-md);}
+    #no-ws .nw-title{font-family:var(--mono);font-size:.72rem;font-weight:600;color:var(--text);margin-bottom:8px;}
+    #no-ws .nw-sub{font-size:.8rem;color:var(--muted);line-height:1.6;margin-bottom:18px;}
+    #no-ws .nw-btn{width:100%;padding:9px;background:var(--accent);color:#fff;border:none;
+      border-radius:var(--radius);font-family:var(--mono);font-size:.7rem;cursor:pointer;
+      font-weight:500;transition:background .15s;}
+    #no-ws .nw-btn:hover{background:var(--accent-md);}
+    #no-ws .nw-skip{margin-top:10px;font-family:var(--mono);font-size:.6rem;color:var(--subtle);
+      cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
+    #no-ws .nw-skip:hover{color:var(--muted);}
+
+    /* TOAST */
+    #toast{position:fixed;bottom:34px;left:50%;transform:translateX(-50%) translateY(10px);
+      background:var(--text);color:#fff;font-family:var(--mono);font-size:.64rem;
+      padding:6px 14px;border-radius:20px;opacity:0;pointer-events:none;
+      transition:opacity .18s,transform .18s;white-space:nowrap;box-shadow:var(--shadow-md);z-index:999;}
+    #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+    ::-webkit-scrollbar{width:4px;height:4px;}
+    ::-webkit-scrollbar-track{background:transparent;}
+    ::-webkit-scrollbar-thumb{background:var(--border-dk);border-radius:10px;}
+
+    @media(max-width:700px){
+      #preview-pane{display:none;}
+      #editor-pane{border-right:none;}
+      #editor{padding:20px 18px;}
+    }
+  </style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div id="topbar">
+  <span class="t-logo">Gnoke<em>·</em>Mark</span>
+  <div class="t-sep"></div>
+  <span class="t-file" id="t-file">untitled.md</span>
+  <span class="t-mod" id="t-mod" style="display:none">●</span>
+  <div class="t-spacer"></div>
+  <div class="t-stats">
+    <div class="t-stat"><span id="s-words">0</span> words</div>
+    <div class="t-stat"><span id="s-lines">0</span> lines</div>
+    <div class="t-stat"><span id="s-chars">0</span> chars</div>
+  </div>
+  <div class="t-sep"></div>
+  <div id="ws-chip">
+    <div class="ws-dot"></div>
+    <span id="ws-label">Connect workspace</span>
+  </div>
+</div>
+
+<!-- MENUBAR -->
+<div id="menubar">
+
+  <!-- FILE MENU -->
+  <div class="menu-item" id="menu-file">
+    <button class="menu-trigger" id="mt-file">File</button>
+    <div class="menu-drop" id="md-file">
+      <div class="menu-drop-item" id="mi-new"><span>New</span><span class="shortcut">Ctrl+N</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-drop-item" id="mi-open"><span>Open…</span><span class="shortcut">Ctrl+O</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-drop-item" id="mi-save"><span>Save</span><span class="shortcut">Ctrl+S</span></div>
+      <div class="menu-drop-item" id="mi-saveas"><span>Save As…</span><span class="shortcut">Ctrl+Shift+S</span></div>
+    </div>
+  </div>
+
+  <!-- VIEW MENU -->
+  <div class="menu-item" id="menu-view">
+    <button class="menu-trigger" id="mt-view">View</button>
+    <div class="menu-drop" id="md-view">
+      <div class="menu-drop-item" id="mi-focus"><span>Focus Mode</span><span class="shortcut">Ctrl+E</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-drop-item" id="mi-copy-md"><span>Copy Markdown</span><span class="shortcut"></span></div>
+      <div class="menu-drop-item" id="mi-copy-html"><span>Copy HTML</span><span class="shortcut"></span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- TOOLBAR -->
+<div id="toolbar">
+  <div class="tb-group">
+    <button class="tbtn" onclick="ins('**','**')"><b>B</b></button>
+    <button class="tbtn" onclick="ins('*','*')"><i>I</i></button>
+    <button class="tbtn" onclick="ins('~~','~~')"><s>S</s></button>
+    <button class="tbtn" onclick="ins('`','`')">` code</button>
+  </div>
+  <div class="tb-group">
+    <button class="tbtn" onclick="insLine('# ')">H1</button>
+    <button class="tbtn" onclick="insLine('## ')">H2</button>
+    <button class="tbtn" onclick="insLine('### ')">H3</button>
+  </div>
+  <div class="tb-group">
+    <button class="tbtn" onclick="insLine('- ')">— list</button>
+    <button class="tbtn" onclick="insLine('1. ')">1. list</button>
+    <button class="tbtn" onclick="insLine('> ')">quote</button>
+    <button class="tbtn" onclick="insHr()">hr</button>
+  </div>
+  <div class="tb-group">
+    <button class="tbtn" onclick="insLink()">🔗</button>
+    <button class="tbtn" onclick="insCode()">``` block</button>
+  </div>
+</div>
+
+<!-- WORKSPACE -->
+<div id="workspace" style="position:relative;">
+
+  <!-- NO WORKSPACE OVERLAY -->
+  <div id="no-ws">
+    <div class="nw-card">
+      <div class="nw-title">Connect a workspace folder</div>
+      <div class="nw-sub">Gnoke·Mark saves documents through GnokeDB — your files live on your filesystem, not in the browser.</div>
+      <button class="nw-btn" id="nw-connect-btn">📁 Connect folder</button>
+      <div class="nw-skip" id="nw-skip">Skip — write without saving to disk</div>
+    </div>
+  </div>
+
+  <div id="editor-pane">
+    <div class="pane-label">markdown</div>
+    <textarea id="editor" placeholder="# Start writing&#10;&#10;Your markdown here…" spellcheck="true"></textarea>
+  </div>
+
+  <div id="preview-pane">
+    <div class="pane-label">preview</div>
+    <div id="preview"></div>
+  </div>
+
+</div>
+
+<!-- STATUSBAR -->
+<div id="statusbar">
+  <span id="s-db">db: not connected</span>
+  <div class="s-sep"></div>
+  <span id="s-handle">no file</span>
+  <div class="s-sep"></div>
+  <span id="s-autosave">autosave: localStorage</span>
+  <span id="s-msg"></span>
+</div>
+
+<div id="toast"></div>
+
+<!-- AXEON TRIO -->
+<script src="gnoke-db.js"></script>
+<script src="gnoke-sync.js"></script>
+<script src="gnoke-bridge.js"></script>
+
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════
+   GNOKE·MARK — wired to Axeon Trio
+   GnokeDB  → document persistence (filesystem .jsonl)
+   GNOKE_SYNC → future sync across devices
+   GnokeBridge → event routing
+═══════════════════════════════════════════════════════ */
+
+const LS_KEY   = 'gnokemark_autosave_v1';
+const COLL     = 'documents';
+
+/* ── STATE ── */
+let _handle    = null;   // FileSystemFileHandle for Save
+let _name      = 'untitled.md';
+let _saved     = '';
+let _dirty     = false;
+let _lsTimer   = null;
+let _dbReady   = false;
+let _focusMode = false;
+
+/* ── UI REFS ── */
+const editor   = document.getElementById('editor');
+const preview  = document.getElementById('preview');
+const tFile    = document.getElementById('t-file');
+const tMod     = document.getElementById('t-mod');
+const sWords   = document.getElementById('s-words');
+const sLines   = document.getElementById('s-lines');
+const sChars   = document.getElementById('s-chars');
+const sHandle  = document.getElementById('s-handle');
+const sAutosave= document.getElementById('s-autosave');
+const sDb      = document.getElementById('s-db');
+const sMsg     = document.getElementById('s-msg');
+const noWs     = document.getElementById('no-ws');
+const wsChip   = document.getElementById('ws-chip');
+const wsLabel  = document.getElementById('ws-label');
+
+/* ── TOAST ── */
+let _tt;
+function toast(msg,dur=2000){
+  const el=document.getElementById('toast');
+  clearTimeout(_tt);el.textContent=msg;el.classList.add('show');
+  _tt=setTimeout(()=>el.classList.remove('show'),dur);
+}
+function status(msg){
+  sMsg.textContent=msg;
+  setTimeout(()=>{if(sMsg.textContent===msg)sMsg.textContent='';},3000);
+}
+
+/* ── MARKDOWN PARSER ── */
+function mdToHtml(md){
+  let h=md
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/```(\w*)\n([\s\S]*?)```/g,(_,l,c)=>`<pre><code>${c.trimEnd()}</code></pre>`)
+    .replace(/^#### (.+)$/gm,'<h4>$1</h4>')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
+    .replace(/^&gt; (.+)$/gm,'<blockquote><p>$1</p></blockquote>')
+    .replace(/^---$/gm,'<hr>')
+    .replace(/\*\*\*(.+?)\*\*\*/g,'<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/~~(.+?)~~/g,'<s>$1</s>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g,'<img alt="$1" src="$2">')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank">$1</a>')
+    .replace(/^[-*+] (.+)$/gm,'<li>$1</li>')
+    .replace(/^\d+\. (.+)$/gm,'<li class="ol">$1</li>')
+    .replace(/\n\n+/g,'</p><p>')
+    .replace(/\n/g,'<br>');
+  if(!/^<(h[1-6]|ul|ol|pre|blockquote|hr)/.test(h.trim())) h=`<p>${h}</p>`;
+  h=h.replace(/(<li>[\s\S]*?<\/li>)/g,m=>`<ul>${m}</ul>`);
+  return h;
+}
+
+/* ── RENDER ── */
+function render(){ preview.innerHTML=mdToHtml(editor.value); }
+
+/* ── STATS ── */
+function updateStats(){
+  const v=editor.value;
+  sWords.textContent=v.trim()?v.trim().split(/\s+/).length:0;
+  sLines.textContent=v.split('\n').length;
+  sChars.textContent=v.length;
+}
+
+/* ── DIRTY ── */
+function setDirty(v){
+  _dirty=v;
+  tMod.style.display=v?'inline':'none';
+  tFile.textContent=_name;
+}
+
+/* ── AUTOSAVE — localStorage fallback ── */
+function scheduleLS(){
+  clearTimeout(_lsTimer);
+  _lsTimer=setTimeout(()=>{
+    localStorage.setItem(LS_KEY,JSON.stringify({name:_name,content:editor.value}));
+  },3000);
+}
+
+/* ── AUTOSAVE — GnokeDB (primary when connected) ── */
+async function saveToDb(){
+  if(!_dbReady) return;
+  try{
+    await GnokeDB.save(COLL,{
+      name     : _name,
+      content  : editor.value,
+      savedAt  : new Date().toISOString(),
+    });
+    sAutosave.textContent='autosave: db ✓';
+    setTimeout(()=>sAutosave.textContent='autosave: db',2000);
+  } catch(e){
+    console.warn('[gnokemark] db autosave failed:',e);
+  }
+}
+
+let _dbTimer=null;
+function scheduleDbSave(){
+  clearTimeout(_dbTimer);
+  _dbTimer=setTimeout(saveToDb,3000);
+}
+
+/* ── WORKSPACE / DB BOOT ── */
+async function connectWorkspace(){
+  try{
+    const info=await GnokeDB.open();
+    const sync=typeof GNOKE_SYNC!=='undefined'?GNOKE_SYNC:null;
+    GnokeBridge.init({db:GnokeDB,sync});
+    _dbReady=true;
+
+    wsChip.className='connected';
+    wsLabel.textContent='✓ '+info.folder;
+    sDb.textContent='db: '+info.folder;
+    sAutosave.textContent='autosave: db';
+    noWs.style.display='none';
+
+    /* Load most recent document from DB if exists */
+    const docs=await GnokeDB.query(COLL);
+    if(docs.length){
+      const latest=docs.sort((a,b)=>new Date(b.savedAt)-new Date(a.savedAt))[0];
+      editor.value=latest.content;
+      _name=latest.name||'untitled.md';
+      _saved=latest.content;
+      tFile.textContent=_name;
+      sHandle.textContent=_name;
+      render(); updateStats();
+      status('restored from db');
+    }
+
+    toast('Workspace connected: '+info.folder);
+  } catch(e){
+    if(e.name!=='AbortError'){
+      toast('Connection failed: '+e.message);
+    }
+  }
+}
+
+/* ── FILE OPS (File System Access API for Save/Open .md files) ── */
+const FILE_TYPES=[{description:'Markdown',accept:{'text/markdown':['.md','.markdown'],'text/plain':['.txt']}}];
+
+async function fileNew(){
+  if(_dirty&&!confirm('Discard unsaved changes?'))return;
+  editor.value='';_handle=null;_name='untitled.md';
+  _saved='';setDirty(false);
+  sHandle.textContent='no file';
+  tFile.textContent=_name;
+  render();updateStats();
+  editor.focus();
+}
+
+async function fileOpen(){
+  if(_dirty&&!confirm('Discard unsaved changes?'))return;
+  try{
+    const[h]=await window.showOpenFilePicker({types:FILE_TYPES,multiple:false});
+    const file=await h.getFile();
+    editor.value=await file.text();
+    _handle=h;_name=file.name;_saved=editor.value;
+    setDirty(false);
+    sHandle.textContent=_name;
+    tFile.textContent=_name;
+    render();updateStats();
+    if(_dbReady) await saveToDb();
+    status('opened');toast('Opened: '+_name);
+  } catch(e){if(e.name!=='AbortError') toast('Open failed');}
+}
+
+async function writeHandle(h,content){
+  const w=await h.createWritable();
+  await w.write(content);await w.close();
+}
+
+async function fileSave(){
+  if(!_handle){await fileSaveAs();return;}
+  try{
+    await writeHandle(_handle,editor.value);
+    _saved=editor.value;setDirty(false);
+    if(_dbReady) await saveToDb();
+    status('saved ✓');toast('Saved');
+  } catch(e){toast('Save failed: '+e.message);}
+}
+
+async function fileSaveAs(){
+  try{
+    const h=await window.showSaveFilePicker({
+      types:FILE_TYPES,
+      suggestedName:_name.endsWith('.md')?_name:'document.md'
+    });
+    await writeHandle(h,editor.value);
+    _handle=h;_name=h.name;_saved=editor.value;
+    setDirty(false);
+    sHandle.textContent=_name;tFile.textContent=_name;
+    if(_dbReady) await saveToDb();
+    status('saved ✓');toast('Saved as '+_name);
+  } catch(e){if(e.name!=='AbortError') toast('Save failed');}
+}
+
+/* ── MENUS ── */
+function closeAllMenus(){
+  document.querySelectorAll('.menu-drop.open').forEach(d=>d.classList.remove('open'));
+  document.querySelectorAll('.menu-trigger.open').forEach(t=>t.classList.remove('open'));
+}
+
+document.querySelectorAll('.menu-trigger').forEach(trigger=>{
+  trigger.addEventListener('click',e=>{
+    e.stopPropagation();
+    const drop=trigger.closest('.menu-item').querySelector('.menu-drop');
+    const wasOpen=drop.classList.contains('open');
+    closeAllMenus();
+    if(!wasOpen){drop.classList.add('open');trigger.classList.add('open');}
+  });
+});
+
+document.addEventListener('click',closeAllMenus);
+
+function menuItem(id,fn){
+  document.getElementById(id).addEventListener('click',()=>{closeAllMenus();fn();});
+}
+
+menuItem('mi-new',fileNew);
+menuItem('mi-open',fileOpen);
+menuItem('mi-save',fileSave);
+menuItem('mi-saveas',fileSaveAs);
+menuItem('mi-focus',toggleFocus);
+menuItem('mi-copy-md',()=>{
+  navigator.clipboard.writeText(editor.value).then(()=>toast('Markdown copied')).catch(()=>toast('Failed'));
+});
+menuItem('mi-copy-html',()=>{
+  navigator.clipboard.writeText(mdToHtml(editor.value)).then(()=>toast('HTML copied')).catch(()=>toast('Failed'));
+});
+
+/* ── FOCUS MODE ── */
+function toggleFocus(){
+  _focusMode=!_focusMode;
+  document.body.classList.toggle('focus-mode',_focusMode);
+  document.getElementById('mi-focus').querySelector('span').textContent=
+    _focusMode?'Exit Focus Mode':'Focus Mode';
+  editor.focus();
+}
+
+/* ── INSERT HELPERS ── */
+function ins(before,after){
+  const s=editor.selectionStart,e=editor.selectionEnd;
+  const sel=editor.value.slice(s,e);
+  editor.setRangeText(before+sel+after,s,e,'select');
+  if(!sel) editor.setSelectionRange(s+before.length,s+before.length);
+  editor.focus();onInput();
+}
+function insLine(prefix){
+  const s=editor.selectionStart;
+  const bol=editor.value.lastIndexOf('\n',s-1)+1;
+  editor.setRangeText(prefix,bol,bol,'end');
+  editor.focus();onInput();
+}
+function insLink(){
+  const url=prompt('URL:','https://');if(!url)return;
+  const label=prompt('Label:','link text')||'link';
+  ins('['+label+']('+url+')','');
+}
+function insCode(){ins('```\n','\n```');}
+function insHr(){
+  const s=editor.selectionStart;
+  editor.setRangeText('\n---\n',s,s,'end');
+  editor.focus();onInput();
+}
+
+/* ── KEYBOARD ── */
+editor.addEventListener('keydown',e=>{
+  if(e.ctrlKey||e.metaKey){
+    if(e.key==='s'){e.preventDefault();e.shiftKey?fileSaveAs():fileSave();}
+    else if(e.key==='o'){e.preventDefault();fileOpen();}
+    else if(e.key==='n'){e.preventDefault();fileNew();}
+    else if(e.key==='e'){e.preventDefault();toggleFocus();}
+  }
+  if(e.key==='Tab'){
+    e.preventDefault();
+    const s=editor.selectionStart;
+    editor.setRangeText('  ',s,s,'end');
+    onInput();
+  }
+});
+
+/* ── INPUT ── */
+function onInput(){
+  render();updateStats();
+  setDirty(editor.value!==_saved);
+  scheduleLS();
+  if(_dbReady) scheduleDbSave();
+}
+editor.addEventListener('input',onInput);
+
+/* ── WORKSPACE CHIP ── */
+wsChip.addEventListener('click',()=>{
+  if(!_dbReady) connectWorkspace();
+});
+
+/* ── OVERLAY BUTTONS ── */
+document.getElementById('nw-connect-btn').addEventListener('click',connectWorkspace);
+document.getElementById('nw-skip').addEventListener('click',()=>{
+  noWs.style.display='none';
+  sDb.textContent='db: offline only';
+  editor.focus();
+});
+
+/* ── NO FS API ── */
+if(!window.showOpenFilePicker){
+  ['mi-open','mi-save','mi-saveas'].forEach(id=>{
+    document.getElementById(id).classList.add('disabled');
+  });
+  status('⚠ Chrome required for file open/save');
+}
+
+/* ── RESTORE AUTOSAVE (localStorage, shown before DB connects) ── */
+try{
+  const saved=JSON.parse(localStorage.getItem(LS_KEY));
+  if(saved?.content){
+    editor.value=saved.content;
+    _name=saved.name||'untitled.md';
+    _saved=saved.content;
+    tFile.textContent=_name;
+    render();updateStats();
+  }
+} catch{}
+
+/* ── WELCOME CONTENT ── */
+if(!editor.value){
+  editor.value=`# Gnoke·Mark\n\nA focused markdown writer, powered by **Gnoke-Axeon**.\n\nConnect a workspace folder to save documents to your filesystem via GnokeDB.\n\n## Shortcuts\n\n- \`Ctrl+S\` — Save · \`Ctrl+Shift+S\` — Save As\n- \`Ctrl+O\` — Open · \`Ctrl+N\` — New\n- \`Ctrl+E\` — Focus mode\n\n## Why Axeon?\n\n> Your documents live in \`.jsonl\` files on your device — not browser memory.\n> Crash-safe. Offline-first. Sync-ready.\n`;
+  _saved=editor.value;
+}
+
+render();updateStats();
+</script>
+</body>
+</html>
